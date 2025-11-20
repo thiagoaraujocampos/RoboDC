@@ -25,6 +25,7 @@ export class FaceApiService {
   modelLoadError = false;
 
   currentEyesSide?: string;
+  currentDirection?: string;
   currentEmotion = '';
   emotionPorcentage = '';
   expressionColor = EmotionsColors.neutral;
@@ -182,15 +183,59 @@ export class FaceApiService {
         };
 
         const x = detection.detection.box.x + detection.detection.box.width / 2;
-        const sectionWidth = displaySize.width / 8;
+        const y = detection.detection.box.y + detection.detection.box.height / 2;
+        const sectionWidth = displaySize.width / 10;
+        const sectionHeight = displaySize.height / 10;
 
         if (x < sectionWidth) this.currentEyesSide = '82';
         else if (x < sectionWidth * 2) this.currentEyesSide = '74';
         else if (x < sectionWidth * 3) this.currentEyesSide = '66';
-        else if (x < sectionWidth * 4 || x < sectionWidth * 5) this.currentEyesSide = undefined;
-        else if (x < sectionWidth * 6) this.currentEyesSide = '42';
-        else if (x < sectionWidth * 7) this.currentEyesSide = '50';
+        else if (x < sectionWidth * 4 || x < sectionWidth * 6) this.currentEyesSide = undefined;
+        else if (x < sectionWidth * 7) this.currentEyesSide = '42';
+        else if (x < sectionWidth * 8) this.currentEyesSide = '50';
         else this.currentEyesSide = '58';
+
+        if (y < sectionHeight * 2) {
+          if (x < sectionWidth * 2) this.currentDirection = 'NE+';
+          else if (x < sectionWidth * 3) this.currentDirection = 'NE';
+          else if (x < sectionWidth * 4) this.currentDirection = 'N';
+          else if (x < sectionWidth * 6) this.currentDirection = 'N';
+          else if (x < sectionWidth * 7) this.currentDirection = 'N';
+          else if (x < sectionWidth * 8) this.currentDirection = 'NW';
+          else this.currentDirection = 'NW+';
+        } else if (y < sectionHeight * 4) {
+          if (x < sectionWidth * 2) this.currentDirection = 'E+';
+          else if (x < sectionWidth * 3) this.currentDirection = 'E';
+          else if (x < sectionWidth * 4) this.currentDirection = 'center';
+          else if (x < sectionWidth * 6) this.currentDirection = 'center';
+          else if (x < sectionWidth * 7) this.currentDirection = 'W';
+          else if (x < sectionWidth * 8) this.currentDirection = 'W';
+          else this.currentDirection = 'W+';
+        } else if (y < sectionHeight * 6) {
+          if (x < sectionWidth * 2) this.currentDirection = 'E+';
+          else if (x < sectionWidth * 3) this.currentDirection = 'E';
+          else if (x < sectionWidth * 4) this.currentDirection = 'center';
+          else if (x < sectionWidth * 6) this.currentDirection = 'center';
+          else if (x < sectionWidth * 7) this.currentDirection = 'W';
+          else if (x < sectionWidth * 8) this.currentDirection = 'W';
+          else this.currentDirection = 'W+';
+        } else if (y < sectionHeight * 8) {
+          if (x < sectionWidth * 2) this.currentDirection = 'SE+';
+          else if (x < sectionWidth * 3) this.currentDirection = 'SE';
+          else if (x < sectionWidth * 4) this.currentDirection = 'S';
+          else if (x < sectionWidth * 6) this.currentDirection = 'S';
+          else if (x < sectionWidth * 7) this.currentDirection = 'S';
+          else if (x < sectionWidth * 8) this.currentDirection = 'SW';
+          else this.currentDirection = 'SW+';
+        } else {
+          if (x < sectionWidth * 2) this.currentDirection = 'SE+';
+          else if (x < sectionWidth * 3) this.currentDirection = 'SE';
+          else if (x < sectionWidth * 4) this.currentDirection = 'S+';
+          else if (x < sectionWidth * 6) this.currentDirection = 'S+';
+          else if (x < sectionWidth * 7) this.currentDirection = 'S+';
+          else if (x < sectionWidth * 8) this.currentDirection = 'SW';
+          else this.currentDirection = 'SW+';
+        }
       } else {
         this.firstDetectionMessageSaid = false;
       }
@@ -346,13 +391,9 @@ export class FaceApiService {
   }
 
   changeRobotVirtualFace(expression: string) {
-    if (this.lastSendedExpression === expression) return;
-
-    this.lastSendedExpression = expression;
-
     const ROS_TOPIC_NAME = '/robot/face_state';
 
-    const directionMap = {
+    const directionMap: { [key: string]: number } = {
       'center': 0,
       'N': 1,
       'NE': 2,
@@ -372,7 +413,7 @@ export class FaceApiService {
       'NW+': 16
     };
 
-    const expressionsMap = {
+    const expressionsMap: { [key: string]: number } = {
       'neutral': 1,
       'happy': 2,
       'sad': 3,
@@ -401,9 +442,11 @@ export class FaceApiService {
       expValue = expressionsMap['neutral'];
     }
 
+    const dirValue = this.currentDirection ? directionMap[this.currentDirection] || 0 : 0;
+
     const faceState = {
       talking: false,
-      dir: directionMap['center'],
+      dir: dirValue,
       blink: false,
       exp: expValue,
       color: '#ffffff',
@@ -411,11 +454,16 @@ export class FaceApiService {
       pauseBlink: false
     };
 
+    const currentState = JSON.stringify(faceState);
+    if (this.lastSendedExpression === currentState) return;
+
+    this.lastSendedExpression = currentState;
+
     const message = {
       op: 'publish',
       topic: ROS_TOPIC_NAME,
       msg: {
-        data: JSON.stringify(faceState)
+        data: currentState
       }
     };
 
