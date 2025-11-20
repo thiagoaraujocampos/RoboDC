@@ -44,6 +44,8 @@ export class FaceApiService {
   firstDetectionMessageTimestamp: number = Date.now() - 60000;
 
   lastChangeExpressionSended = Date.now() - 60000;
+  lastDetectionTimestamp: number = Date.now();
+  noDetectionTimeout = 20000;
 
   useVirtualFace = localStorage.getItem('use_virtual_face') === 'false' ? false : true;
 
@@ -236,8 +238,15 @@ export class FaceApiService {
           else if (x < sectionWidth * 8) this.currentDirection = 'SW';
           else this.currentDirection = 'SW+';
         }
+
+        this.lastDetectionTimestamp = Date.now();
       } else {
         this.firstDetectionMessageSaid = false;
+
+        if (Date.now() - this.lastDetectionTimestamp > this.noDetectionTimeout) {
+          this.currentDirection = 'center';
+          this.currentEmotion = 'neutral';
+        }
       }
 
       this.setExpression(detection);
@@ -443,6 +452,7 @@ export class FaceApiService {
     }
 
     const dirValue = this.currentDirection ? directionMap[this.currentDirection] || 0 : 0;
+    const isIdle = Date.now() - this.lastDetectionTimestamp > this.noDetectionTimeout;
 
     const faceState = {
       talking: false,
@@ -450,7 +460,7 @@ export class FaceApiService {
       blink: false,
       exp: expValue,
       color: '#ffffff',
-      pauseLook: true,
+      pauseLook: isIdle ? false : true,
       pauseBlink: false
     };
 
