@@ -23,6 +23,11 @@
       ></ion-input>
     </ion-item>
 
+    <ion-item fill="outline">
+      <ion-label>Usar Face Virtual (ROS)</ion-label>
+      <ion-toggle [(ngModel)]="use_virtual_face"></ion-toggle>
+    </ion-item>
+
     <ion-button expand="full" (click)="save()"> Salvar </ion-button>
     <ion-button expand="full" (click)="reset()"> Redefinir </ion-button>
   </div>

@@ -6,7 +6,7 @@ import { TtsService } from './tts.service';
 
 declare var faceapi: any;
 
-export const DETECTION_INTERVAL = 200;
+export const DETECTION_INTERVAL = 800;
 
 enum EmotionsColors {
   angry = '#FF0000',
@@ -43,6 +43,12 @@ export class FaceApiService {
   firstDetectionMessageTimestamp: number = Date.now() - 60000;
 
   lastChangeExpressionSended = Date.now() - 60000;
+
+  useVirtualFace = localStorage.getItem('use_virtual_face') === 'false' ? false : true;
+
+  private rosbridgeWs?: WebSocket;
+  private rosbridgeConnected = false;
+  private reconnectTimeout?: any;
 
   constructor(private translate: TranslateService, private http: HttpClient, private tts: TtsService) { }
 
@@ -81,8 +87,8 @@ export class FaceApiService {
         msg = (this.currentGender === 'male' ? 'um jovem adulto' : 'um jovem adulta');
       } else if (data.age > 30 && data.age < 70) {
         msg = (this.currentGender === 'male' ? 'um adulto' : 'um adulta');
-      } else if (data.age > 70) {
-        msg = (this.currentGender === 'male' ? 'um senhor de idade' : 'uma senhora de idade');
+      } else if (data.age > 80) {
+        msg = (this.currentGender === 'male' ? 'um senhor' : 'uma senhora');
       }
 
       msg = `E é ${msg}`;
@@ -240,7 +246,63 @@ export class FaceApiService {
     });
   }
 
+  private connectRosbridge() {
+    if (!this.useVirtualFace) return;
+    if (this.rosbridgeWs?.readyState === WebSocket.OPEN) return;
+
+    const rosbridgeUrl = localStorage.getItem('robot_ws') || 'ws://localhost:9090';
+
+    try {
+      this.rosbridgeWs = new WebSocket(rosbridgeUrl);
+
+      this.rosbridgeWs.onopen = () => {
+        this.rosbridgeConnected = true;
+        if (this.reconnectTimeout) {
+          clearTimeout(this.reconnectTimeout);
+          this.reconnectTimeout = undefined;
+        }
+      };
+
+      this.rosbridgeWs.onclose = () => {
+        this.rosbridgeConnected = false;
+        if (this.useVirtualFace) {
+          this.reconnectTimeout = setTimeout(() => this.connectRosbridge(), 5000);
+        }
+      };
+
+      this.rosbridgeWs.onerror = () => {
+        this.rosbridgeConnected = false;
+      };
+    } catch (e) {
+      this.rosbridgeConnected = false;
+    }
+  }
+
+  private disconnectRosbridge() {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = undefined;
+    }
+    if (this.rosbridgeWs) {
+      this.rosbridgeWs.close();
+      this.rosbridgeWs = undefined;
+    }
+    this.rosbridgeConnected = false;
+  }
+
   changeRobotFace(expression: string) {
+    if (this.useVirtualFace)
+    {
+      this.changeRobotVirtualFace(expression);
+    }
+    else
+    {
+      this.changeRobotLedFace(expression);
+    }
+  }
+
+  changeRobotLedFace(expression: string) {
+    // Uses Esp32 with LED values via API
     if (this.lastSendedExpression === expression) return;
 
     this.lastSendedExpression = expression;
@@ -281,5 +343,88 @@ export class FaceApiService {
     lastValueFrom(
       this.http.post(`${robot_api}/led/changeExpression`, { expressionValues }).pipe(timeout(1000))
     ).catch(e => console.log('Erro ao enviar expressão para o robô'));
+  }
+
+  changeRobotVirtualFace(expression: string) {
+    if (this.lastSendedExpression === expression) return;
+
+    this.lastSendedExpression = expression;
+
+    const ROS_TOPIC_NAME = '/robot/face_state';
+
+    const directionMap = {
+      'center': 0,
+      'N': 1,
+      'NE': 2,
+      'E': 3,
+      'SE': 4,
+      'S': 5,
+      'SW': 6,
+      'W': 7,
+      'NW': 8,
+      'N+': 9,
+      'NE+': 10,
+      'E+': 11,
+      'SE+': 12,
+      'S+': 13,
+      'SW+': 14,
+      'W+': 15,
+      'NW+': 16
+    };
+
+    const expressionsMap = {
+      'neutral': 1,
+      'happy': 2,
+      'sad': 3,
+      'scared': 4,
+      'surprised': 5,
+      'angry': 6,
+      'disgusted': 7,
+      'sleepy': 8
+    };
+
+    let expValue = expressionsMap['neutral'];
+
+    if (expression === 'angry') {
+      expValue = expressionsMap['angry'];
+    } else if (expression === 'disgusted') {
+      expValue = expressionsMap['disgusted'];
+    } else if (expression === 'fearful') {
+      expValue = expressionsMap['scared'];
+    } else if (expression === 'happy') {
+      expValue = expressionsMap['happy'];
+    } else if (expression === 'sad') {
+      expValue = expressionsMap['sad'];
+    } else if (expression === 'surprised') {
+      expValue = expressionsMap['surprised'];
+    } else if (expression === 'neutral' || expression === '') {
+      expValue = expressionsMap['neutral'];
+    }
+
+    const faceState = {
+      talking: false,
+      dir: directionMap['center'],
+      blink: false,
+      exp: expValue,
+      color: '#ffffff',
+      pauseLook: true,
+      pauseBlink: false
+    };
+
+    const message = {
+      op: 'publish',
+      topic: ROS_TOPIC_NAME,
+      msg: {
+        data: JSON.stringify(faceState)
+      }
+    };
+
+    if (!this.rosbridgeConnected) {
+      this.connectRosbridge();
+    }
+
+    if (this.rosbridgeWs?.readyState === WebSocket.OPEN) {
+      this.rosbridgeWs.send(JSON.stringify(message));
+    }
   }
 }
