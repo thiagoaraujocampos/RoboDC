@@ -10,7 +10,12 @@
   </div>
 
   <div class="container" *ngIf="!fetchError">
-    <div class="direction-controllers">
+    <div class="control-mode-toggle">
+      <ion-toggle [(ngModel)]="useJoystick"></ion-toggle>
+      <span>{{ useJoystick ? 'Joystick' : 'Setas' }}</span>
+    </div>
+
+    <div class="direction-controllers" *ngIf="!useJoystick">
       <div class="direction-icon" (click)="emitCmdVel(sLinear, sAngular)">
         <ion-icon name="arrow-up-outline"></ion-icon>
       </div>
@@ -37,6 +42,14 @@
       </div>
       <div class="direction-icon" (click)="emitCmdVel(-sLinear, sAngular)">
         <ion-icon name="arrow-down-outline"></ion-icon>
+      </div>
+    </div>
+
+    <div class="joystick-area" *ngIf="useJoystick">
+      <div class="joystick-container"
+        (pointerdown)="onJoystickStart($event)">
+        <div class="joystick-center"
+          [style.transform]="'translate(calc(-50% + ' + joystickX + 'px), calc(-50% + ' + joystickY + 'px))'"></div>
       </div>
     </div>
 

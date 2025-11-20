@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { Router } from '@angular/router';
 
 @Component({
@@ -7,7 +7,7 @@ import { Router } from '@angular/router';
   templateUrl: './controller.page.html',
   styleUrls: ['./controller.page.scss'],
 })
-export class ControllerPage implements OnInit {
+export class ControllerPage implements OnInit, OnDestroy {
   public fetchError: boolean = false;
 
   public socket?: WebSocket = undefined;
@@ -18,6 +18,12 @@ export class ControllerPage implements OnInit {
   public sAngular: number = 0.5;
 
   public robot_ws: string;
+  public useJoystick: boolean = false;
+  public joystickActive: boolean = false;
+  private lastEmitTime: number = 0;
+  private emitThrottle: number = 50;
+  public joystickX: number = 0;
+  public joystickY: number = 0;
 
   constructor(private router: Router, private httpClient: HttpClient) {
     this.robot_ws = localStorage.getItem('robot_ws') || 'ws://192.168.1.100:9090';
@@ -25,6 +31,13 @@ export class ControllerPage implements OnInit {
   }
 
   ngOnInit() {
+    window.addEventListener('pointermove', this.onGlobalPointerMove.bind(this));
+    window.addEventListener('pointerup', this.onGlobalPointerUp.bind(this));
+  }
+
+  ngOnDestroy() {
+    window.removeEventListener('pointermove', this.onGlobalPointerMove.bind(this));
+    window.removeEventListener('pointerup', this.onGlobalPointerUp.bind(this));
   }
 
   goToHome() {
@@ -102,5 +115,83 @@ export class ControllerPage implements OnInit {
     this.sAngular -= 0.1;
     this.sAngular = Math.round(this.sAngular * 10) / 10;
     this.logs.push(`[${new Date().toISOString()}] Angular Speed decreased to ${this.sAngular}`);
+  }
+
+  onJoystickStart(event: PointerEvent) {
+    this.joystickActive = true;
+    this.updateJoystick(event);
+  }
+
+  onJoystickMove(event: PointerEvent) {
+    if (!this.joystickActive) return;
+    this.updateJoystick(event);
+  }
+
+  onJoystickEnd(event?: PointerEvent) {
+    this.joystickActive = false;
+    this.joystickX = 0;
+    this.joystickY = 0;
+    this.emitCmdVel(0, 0);
+  }
+
+  onGlobalPointerMove(event: PointerEvent) {
+    if (!this.joystickActive) return;
+    this.updateJoystick(event);
+  }
+
+  onGlobalPointerUp(event: PointerEvent) {
+    if (!this.joystickActive) return;
+    this.onJoystickEnd(event);
+  }
+
+  updateJoystick(event: PointerEvent) {
+    const now = Date.now();
+    if (now - this.lastEmitTime < this.emitThrottle) {
+      return;
+    }
+    this.lastEmitTime = now;
+
+    const joystickContainer = document.querySelector('.joystick-container') as HTMLElement;
+    if (!joystickContainer) return;
+
+    const rect = joystickContainer.getBoundingClientRect();
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+
+    const clientX = event.clientX - rect.left;
+    const clientY = event.clientY - rect.top;
+
+    const deltaX = clientX - centerX;
+    const deltaY = clientY - centerY;
+    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    const maxDistance = Math.min(centerX, centerY) * 0.8;
+
+    if (distance < 5) {
+      this.joystickX = 0;
+      this.joystickY = 0;
+      this.emitCmdVel(0, 0);
+      return;
+    }
+
+    const angle = Math.atan2(deltaY, deltaX);
+
+    let visualDistance = distance;
+    let controlDistance = distance;
+
+    if (distance > maxDistance) {
+      visualDistance = maxDistance;
+      controlDistance = maxDistance;
+    }
+
+    const normalizedX = (controlDistance / maxDistance) * Math.cos(angle);
+    const normalizedY = (controlDistance / maxDistance) * Math.sin(angle);
+
+    this.joystickX = (visualDistance / maxDistance) * maxDistance * Math.cos(angle);
+    this.joystickY = (visualDistance / maxDistance) * maxDistance * Math.sin(angle);
+
+    const linear = -normalizedY * this.sLinear;
+    const angular = -normalizedX * this.sAngular;
+
+    this.emitCmdVel(Number(linear.toFixed(2)), Number(angular.toFixed(2)));
   }
 }
