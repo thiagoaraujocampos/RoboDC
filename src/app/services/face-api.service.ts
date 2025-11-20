@@ -52,8 +52,11 @@ export class FaceApiService {
   private rosbridgeWs?: WebSocket;
   private rosbridgeConnected = false;
   private reconnectTimeout?: any;
+  private isTalking = false;
 
-  constructor(private translate: TranslateService, private http: HttpClient, private tts: TtsService) { }
+  constructor(private translate: TranslateService, private http: HttpClient, private tts: TtsService) {
+    this.tts.setFaceApiService(this);
+  }
 
   async loadModels() {
     try {
@@ -300,6 +303,11 @@ export class FaceApiService {
     });
   }
 
+  setTalking(talking: boolean) {
+    this.isTalking = talking;
+    this.changeRobotFace(this.currentEmotion);
+  }
+
   private connectRosbridge() {
     if (!this.useVirtualFace) return;
     if (this.rosbridgeWs?.readyState === WebSocket.OPEN) return;
@@ -455,7 +463,7 @@ export class FaceApiService {
     const isIdle = Date.now() - this.lastDetectionTimestamp > this.noDetectionTimeout;
 
     const faceState = {
-      talking: false,
+      talking: this.isTalking,
       dir: dirValue,
       blink: false,
       exp: expValue,
