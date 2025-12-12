@@ -7,3 +7,6 @@
 [submodule "robodc-docs"]
 	path = robodc-docs
 	url = https://github.com/thiagoaraujocampos/robodc-docs
+[submodule "robodc-ros2"]
+	path = robodc-ros2
+	url = https://github.com/thiagoaraujocampos/robodc-ros2
